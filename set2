@@ -1,0 +1,570 @@
+
+-- =====================================================
+-- ADBMS PRACTICAL EXAM - SET 2
+-- QUESTIONS: Q1, Q2, Q5 AND Q6
+-- DATABASE: MYSQL WORKBENCH
+-- =====================================================
+
+CREATE DATABASE IF NOT EXISTS ADBMS_Set2;
+USE ADBMS_Set2;
+
+
+-- =====================================================
+-- Q1: EMPLOYEE TABLE - RANGE PARTITIONING
+-- BASED ON SALARY
+-- =====================================================
+
+DROP TABLE IF EXISTS EMPLOYEE;
+
+CREATE TABLE EMPLOYEE (
+    Employee_ID INT,
+    Employee_Name VARCHAR(50),
+    Department VARCHAR(30),
+    Salary INT,
+
+    -- Partition column must be part of primary key
+    PRIMARY KEY (Employee_ID, Salary)
+)
+
+PARTITION BY RANGE (Salary) (
+
+    -- Salary below 30000
+    PARTITION p_low VALUES LESS THAN (30000),
+
+    -- Salary from 30000 to 59999
+    PARTITION p_medium VALUES LESS THAN (60000),
+
+    -- Salary from 60000 to 100000
+    PARTITION p_high VALUES LESS THAN (100001)
+);
+
+
+-- INSERT: Add employee records
+
+INSERT INTO EMPLOYEE VALUES
+(1, 'Rahul', 'IT', 25000),
+(2, 'Amit', 'HR', 35000),
+(3, 'Priya', 'IT', 55000),
+(4, 'Sneha', 'Finance', 75000),
+(5, 'Rohan', 'HR', 28000),
+(6, 'Neha', 'IT', 90000);
+
+
+-- Display all employees
+
+SELECT * FROM EMPLOYEE;
+
+
+-- Display individual partitions
+
+SELECT * FROM EMPLOYEE PARTITION (p_low);
+
+SELECT * FROM EMPLOYEE PARTITION (p_medium);
+
+SELECT * FROM EMPLOYEE PARTITION (p_high);
+
+
+-- UPDATE: Change Rahul's salary
+
+UPDATE EMPLOYEE
+SET Salary = 65000
+WHERE Employee_ID = 1 AND Salary = 25000;
+
+
+-- DELETE: Remove Rohan's record
+
+DELETE FROM EMPLOYEE
+WHERE Employee_ID = 5 AND Salary = 28000;
+
+
+-- Display final records
+
+SELECT * FROM EMPLOYEE;
+
+
+-- Display partition information
+
+SELECT PARTITION_NAME, TABLE_ROWS
+FROM INFORMATION_SCHEMA.PARTITIONS
+WHERE TABLE_SCHEMA = 'ADBMS_Set2'
+AND TABLE_NAME = 'EMPLOYEE';
+
+
+
+-- =====================================================
+-- Q2: DISTRIBUTED TRANSACTION
+-- ONLINE TRAIN TICKET BOOKING
+-- =====================================================
+
+DROP TABLE IF EXISTS Bookings;
+DROP TABLE IF EXISTS Trains;
+
+
+-- Create train table
+
+CREATE TABLE Trains (
+    Train_ID INT PRIMARY KEY,
+    Train_Name VARCHAR(50),
+    Available_Seats INT
+);
+
+
+-- Create passenger booking table
+
+CREATE TABLE Bookings (
+    Booking_ID INT PRIMARY KEY,
+    Passenger_Name VARCHAR(50),
+    Train_ID INT,
+
+    FOREIGN KEY (Train_ID)
+    REFERENCES Trains(Train_ID)
+);
+
+
+-- Insert train details
+
+INSERT INTO Trains VALUES
+(101, 'Deccan Express', 50),
+(102, 'Intercity Express', 40);
+
+
+-- Display train details
+
+SELECT * FROM Trains;
+
+
+-- START TRANSACTION
+
+START TRANSACTION;
+
+
+-- Reduce available seats by one
+
+UPDATE Trains
+SET Available_Seats = Available_Seats - 1
+WHERE Train_ID = 101
+AND Available_Seats > 0;
+
+
+-- Insert passenger booking
+
+INSERT INTO Bookings VALUES
+(1, 'Rahul', 101);
+
+
+-- Save transaction
+
+COMMIT;
+
+
+-- Display updated train seats
+
+SELECT * FROM Trains;
+
+
+-- Display booking details
+
+SELECT * FROM Bookings;
+
+
+-- Demonstrate ROLLBACK
+
+START TRANSACTION;
+
+
+-- Temporarily reduce one seat
+
+UPDATE Trains
+SET Available_Seats = Available_Seats - 1
+WHERE Train_ID = 101;
+
+
+-- Temporarily insert another booking
+
+INSERT INTO Bookings VALUES
+(2, 'Amit', 101);
+
+
+-- Cancel both changes
+
+ROLLBACK;
+
+
+-- Verify that changes were cancelled
+
+SELECT * FROM Trains;
+
+SELECT * FROM Bookings;
+
+
+
+-- =====================================================
+-- Q5 (A): STAR SCHEMA
+-- LIBRARY DATABASE
+-- =====================================================
+
+
+-- Drop old Star Schema tables
+
+DROP TABLE IF EXISTS Fact_Borrowing_Star;
+DROP TABLE IF EXISTS Dim_Book_Star;
+DROP TABLE IF EXISTS Dim_Member_Star;
+DROP TABLE IF EXISTS Dim_Date_Star;
+
+
+-- Dimension 1: Book details
+
+CREATE TABLE Dim_Book_Star (
+    Book_ID INT PRIMARY KEY,
+    Book_Title VARCHAR(50),
+    Category VARCHAR(50),
+    Publisher VARCHAR(50)
+);
+
+
+-- Dimension 2: Member details
+
+CREATE TABLE Dim_Member_Star (
+    Member_ID INT PRIMARY KEY,
+    Member_Name VARCHAR(50),
+    City VARCHAR(50)
+);
+
+
+-- Dimension 3: Date details
+
+CREATE TABLE Dim_Date_Star (
+    Date_ID INT PRIMARY KEY,
+    Borrow_Date DATE,
+    Month_Name VARCHAR(20),
+    Borrow_Year INT
+);
+
+
+-- Central Fact Table
+
+CREATE TABLE Fact_Borrowing_Star (
+    Borrow_ID INT PRIMARY KEY,
+    Book_ID INT,
+    Member_ID INT,
+    Date_ID INT,
+    Quantity INT,
+    Fine_Amount DECIMAL(10,2),
+
+    FOREIGN KEY (Book_ID)
+    REFERENCES Dim_Book_Star(Book_ID),
+
+    FOREIGN KEY (Member_ID)
+    REFERENCES Dim_Member_Star(Member_ID),
+
+    FOREIGN KEY (Date_ID)
+    REFERENCES Dim_Date_Star(Date_ID)
+);
+
+
+-- Insert dimension records
+
+INSERT INTO Dim_Book_Star VALUES
+(1, 'DBMS', 'Computer Science', 'Pearson'),
+(2, 'Python', 'Programming', 'McGraw Hill');
+
+
+INSERT INTO Dim_Member_Star VALUES
+(101, 'Rahul', 'Pune'),
+(102, 'Priya', 'Mumbai');
+
+
+INSERT INTO Dim_Date_Star VALUES
+(1, '2026-01-10', 'January', 2026),
+(2, '2026-02-10', 'February', 2026);
+
+
+-- Insert fact records
+
+INSERT INTO Fact_Borrowing_Star VALUES
+(1, 1, 101, 1, 1, 0),
+(2, 2, 102, 2, 2, 50);
+
+
+-- Display fact table
+
+SELECT * FROM Fact_Borrowing_Star;
+
+
+-- Display complete borrowing information
+
+SELECT
+    Fact_Borrowing_Star.Borrow_ID,
+    Dim_Book_Star.Book_Title,
+    Dim_Member_Star.Member_Name,
+    Dim_Date_Star.Borrow_Date,
+    Fact_Borrowing_Star.Quantity,
+    Fact_Borrowing_Star.Fine_Amount
+
+FROM Fact_Borrowing_Star
+
+JOIN Dim_Book_Star
+ON Fact_Borrowing_Star.Book_ID =
+   Dim_Book_Star.Book_ID
+
+JOIN Dim_Member_Star
+ON Fact_Borrowing_Star.Member_ID =
+   Dim_Member_Star.Member_ID
+
+JOIN Dim_Date_Star
+ON Fact_Borrowing_Star.Date_ID =
+   Dim_Date_Star.Date_ID;
+
+
+
+-- =====================================================
+-- Q5 (B): SNOWFLAKE SCHEMA
+-- SAME LIBRARY DATABASE EXAMPLE
+-- =====================================================
+
+
+-- Drop old Snowflake tables in dependency order
+
+DROP TABLE IF EXISTS Fact_Borrowing_Snowflake;
+DROP TABLE IF EXISTS Dim_Book_Snowflake;
+DROP TABLE IF EXISTS Dim_Category;
+DROP TABLE IF EXISTS Dim_Publisher;
+DROP TABLE IF EXISTS Dim_Member_Snowflake;
+DROP TABLE IF EXISTS Dim_City;
+DROP TABLE IF EXISTS Dim_Date_Snowflake;
+
+
+-- Sub-dimension: Book category
+
+CREATE TABLE Dim_Category (
+    Category_ID INT PRIMARY KEY,
+    Category_Name VARCHAR(50)
+);
+
+
+-- Sub-dimension: Publisher
+
+CREATE TABLE Dim_Publisher (
+    Publisher_ID INT PRIMARY KEY,
+    Publisher_Name VARCHAR(50)
+);
+
+
+-- Sub-dimension: City
+
+CREATE TABLE Dim_City (
+    City_ID INT PRIMARY KEY,
+    City_Name VARCHAR(50)
+);
+
+
+-- Main dimension: Book
+
+CREATE TABLE Dim_Book_Snowflake (
+    Book_ID INT PRIMARY KEY,
+    Book_Title VARCHAR(50),
+    Category_ID INT,
+    Publisher_ID INT,
+
+    FOREIGN KEY (Category_ID)
+    REFERENCES Dim_Category(Category_ID),
+
+    FOREIGN KEY (Publisher_ID)
+    REFERENCES Dim_Publisher(Publisher_ID)
+);
+
+
+-- Main dimension: Member
+
+CREATE TABLE Dim_Member_Snowflake (
+    Member_ID INT PRIMARY KEY,
+    Member_Name VARCHAR(50),
+    City_ID INT,
+
+    FOREIGN KEY (City_ID)
+    REFERENCES Dim_City(City_ID)
+);
+
+
+-- Dimension: Date
+
+CREATE TABLE Dim_Date_Snowflake (
+    Date_ID INT PRIMARY KEY,
+    Borrow_Date DATE,
+    Month_Name VARCHAR(20),
+    Borrow_Year INT
+);
+
+
+-- Central Fact Table
+
+CREATE TABLE Fact_Borrowing_Snowflake (
+    Borrow_ID INT PRIMARY KEY,
+    Book_ID INT,
+    Member_ID INT,
+    Date_ID INT,
+    Quantity INT,
+    Fine_Amount DECIMAL(10,2),
+
+    FOREIGN KEY (Book_ID)
+    REFERENCES Dim_Book_Snowflake(Book_ID),
+
+    FOREIGN KEY (Member_ID)
+    REFERENCES Dim_Member_Snowflake(Member_ID),
+
+    FOREIGN KEY (Date_ID)
+    REFERENCES Dim_Date_Snowflake(Date_ID)
+);
+
+
+-- Insert sub-dimension records first
+
+INSERT INTO Dim_Category VALUES
+(1, 'Computer Science'),
+(2, 'Programming');
+
+
+INSERT INTO Dim_Publisher VALUES
+(1, 'Pearson'),
+(2, 'McGraw Hill');
+
+
+INSERT INTO Dim_City VALUES
+(1, 'Pune'),
+(2, 'Mumbai');
+
+
+-- Insert main dimension records
+
+INSERT INTO Dim_Book_Snowflake VALUES
+(1, 'DBMS', 1, 1),
+(2, 'Python', 2, 2);
+
+
+INSERT INTO Dim_Member_Snowflake VALUES
+(101, 'Rahul', 1),
+(102, 'Priya', 2);
+
+
+INSERT INTO Dim_Date_Snowflake VALUES
+(1, '2026-01-10', 'January', 2026),
+(2, '2026-02-10', 'February', 2026);
+
+
+-- Insert fact records
+
+INSERT INTO Fact_Borrowing_Snowflake VALUES
+(1, 1, 101, 1, 1, 0),
+(2, 2, 102, 2, 2, 50);
+
+
+-- Display fact table
+
+SELECT * FROM Fact_Borrowing_Snowflake;
+
+
+-- Retrieve complete borrowing information
+
+SELECT
+    Fact_Borrowing_Snowflake.Borrow_ID,
+    Dim_Book_Snowflake.Book_Title,
+    Dim_Category.Category_Name,
+    Dim_Publisher.Publisher_Name,
+    Dim_Member_Snowflake.Member_Name,
+    Dim_City.City_Name,
+    Dim_Date_Snowflake.Borrow_Date,
+    Fact_Borrowing_Snowflake.Quantity,
+    Fact_Borrowing_Snowflake.Fine_Amount
+
+FROM Fact_Borrowing_Snowflake
+
+JOIN Dim_Book_Snowflake
+ON Fact_Borrowing_Snowflake.Book_ID =
+   Dim_Book_Snowflake.Book_ID
+
+JOIN Dim_Category
+ON Dim_Book_Snowflake.Category_ID =
+   Dim_Category.Category_ID
+
+JOIN Dim_Publisher
+ON Dim_Book_Snowflake.Publisher_ID =
+   Dim_Publisher.Publisher_ID
+
+JOIN Dim_Member_Snowflake
+ON Fact_Borrowing_Snowflake.Member_ID =
+   Dim_Member_Snowflake.Member_ID
+
+JOIN Dim_City
+ON Dim_Member_Snowflake.City_ID =
+   Dim_City.City_ID
+
+JOIN Dim_Date_Snowflake
+ON Fact_Borrowing_Snowflake.Date_ID =
+   Dim_Date_Snowflake.Date_ID;
+
+
+
+-- =====================================================
+-- Q6: OLAP OPERATIONS
+-- ORDERS TABLE
+-- =====================================================
+
+
+DROP TABLE IF EXISTS ORDERS;
+
+
+-- Create ORDERS table
+
+CREATE TABLE ORDERS (
+    Order_ID INT PRIMARY KEY,
+    Product_Name VARCHAR(50),
+    Customer_Name VARCHAR(50),
+    Quantity INT,
+    Total_Amount DECIMAL(10,2)
+);
+
+
+-- Insert order records
+
+INSERT INTO ORDERS VALUES
+(1, 'Mobile', 'Rahul', 2, 30000),
+(2, 'Laptop', 'Amit', 1, 50000),
+(3, 'Mobile', 'Priya', 1, 15000),
+(4, 'Headphones', 'Sneha', 3, 6000),
+(5, 'Laptop', 'Rohan', 2, 100000),
+(6, 'Headphones', 'Neha', 2, 4000);
+
+
+-- (A) Display all order records
+
+SELECT * FROM ORDERS;
+
+
+-- (B) Calculate total order amount
+
+SELECT SUM(Total_Amount) AS Total_Order_Amount
+FROM ORDERS;
+
+
+-- (C) Display product-wise total order amount
+
+SELECT
+    Product_Name,
+    SUM(Total_Amount) AS Total_Order_Amount
+FROM ORDERS
+GROUP BY Product_Name;
+
+
+-- Additional OLAP query:
+-- Display total quantity product-wise
+
+SELECT
+    Product_Name,
+    SUM(Quantity) AS Total_Quantity
+FROM ORDERS
+GROUP BY Product_Name;
+
+
+-- =====================================================
+-- END OF SET 2 PRACTICAL
+-- =====================================================
