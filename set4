@@ -1,0 +1,555 @@
+
+-- =====================================================
+-- ADBMS PRACTICAL EXAM - SET 4
+-- QUESTIONS: Q1, Q2, Q5 AND Q6
+-- =====================================================
+
+CREATE DATABASE IF NOT EXISTS ADBMS_Set4;
+USE ADBMS_Set4;
+
+
+-- =====================================================
+-- Q1: CUSTOMER TABLE - RANGE PARTITIONING
+-- BASED ON CUSTOMER_ID
+-- =====================================================
+
+DROP TABLE IF EXISTS CUSTOMER;
+
+CREATE TABLE CUSTOMER (
+    Customer_ID INT,
+    Customer_Name VARCHAR(50),
+    City VARCHAR(30),
+    Phone VARCHAR(15),
+
+    -- Partition column must be part of primary key
+    PRIMARY KEY (Customer_ID)
+)
+
+PARTITION BY RANGE (Customer_ID) (
+
+    -- Customer IDs below 100
+    PARTITION p_low VALUES LESS THAN (100),
+
+    -- Customer IDs from 100 to 199
+    PARTITION p_medium VALUES LESS THAN (200),
+
+    -- Customer IDs from 200 to 299
+    PARTITION p_high VALUES LESS THAN (300)
+);
+
+
+-- Insert customer records
+
+INSERT INTO CUSTOMER VALUES
+(1, 'Rahul', 'Pune', '9876543210'),
+(2, 'Amit', 'Mumbai', '9876543211'),
+(105, 'Priya', 'Nashik', '9876543212'),
+(120, 'Sneha', 'Pune', '9876543213'),
+(205, 'Rohan', 'Mumbai', '9876543214'),
+(220, 'Neha', 'Nashik', '9876543215');
+
+
+-- Display all customers
+
+SELECT * FROM CUSTOMER;
+
+
+-- Display records from individual partitions
+
+SELECT * FROM CUSTOMER PARTITION (p_low);
+
+SELECT * FROM CUSTOMER PARTITION (p_medium);
+
+SELECT * FROM CUSTOMER PARTITION (p_high);
+
+
+-- UPDATE: Change customer's city
+
+UPDATE CUSTOMER
+SET City = 'Delhi'
+WHERE Customer_ID = 1;
+
+
+-- DELETE: Remove one customer
+
+DELETE FROM CUSTOMER
+WHERE Customer_ID = 2;
+
+
+-- Display final customer records
+
+SELECT * FROM CUSTOMER;
+
+
+-- Display partition information
+
+SELECT PARTITION_NAME, TABLE_ROWS
+FROM INFORMATION_SCHEMA.PARTITIONS
+WHERE TABLE_SCHEMA = 'ADBMS_Set4'
+AND TABLE_NAME = 'CUSTOMER';
+
+
+
+-- =====================================================
+-- Q2: DISTRIBUTED TRANSACTION
+-- ATM WITHDRAWAL
+-- =====================================================
+
+DROP TABLE IF EXISTS Withdrawals;
+DROP TABLE IF EXISTS Accounts;
+
+
+-- Create Accounts table
+
+CREATE TABLE Accounts (
+    Account_ID INT PRIMARY KEY,
+    Account_Holder VARCHAR(50),
+    Balance DECIMAL(10,2)
+);
+
+
+-- Create Withdrawals table
+
+CREATE TABLE Withdrawals (
+    Withdrawal_ID INT PRIMARY KEY,
+    Account_ID INT,
+    Amount DECIMAL(10,2),
+
+    FOREIGN KEY (Account_ID)
+    REFERENCES Accounts(Account_ID)
+);
+
+
+-- Insert account details
+
+INSERT INTO Accounts VALUES
+(101, 'Rahul', 10000),
+(102, 'Amit', 15000);
+
+
+-- Display account details
+
+SELECT * FROM Accounts;
+
+
+-- Start ATM withdrawal transaction
+
+START TRANSACTION;
+
+
+-- Deduct Rs. 2000 from Rahul's account
+-- Only if sufficient balance is available
+
+UPDATE Accounts
+SET Balance = Balance - 2000
+WHERE Account_ID = 101
+AND Balance >= 2000;
+
+
+-- Record the withdrawal
+
+INSERT INTO Withdrawals VALUES
+(1, 101, 2000);
+
+
+-- Save transaction
+
+COMMIT;
+
+
+-- Display updated account balance
+
+SELECT * FROM Accounts;
+
+
+-- Display withdrawal details
+
+SELECT * FROM Withdrawals;
+
+
+-- Demonstrate ROLLBACK
+
+START TRANSACTION;
+
+
+-- Temporarily deduct Rs. 3000
+
+UPDATE Accounts
+SET Balance = Balance - 3000
+WHERE Account_ID = 101;
+
+
+-- Temporarily record another withdrawal
+
+INSERT INTO Withdrawals VALUES
+(2, 101, 3000);
+
+
+-- Cancel both changes
+
+ROLLBACK;
+
+
+-- Verify that the changes were cancelled
+
+SELECT * FROM Accounts;
+
+SELECT * FROM Withdrawals;
+
+
+
+-- =====================================================
+-- Q5 (A): STAR SCHEMA
+-- SALES DATABASE
+-- =====================================================
+
+
+-- Drop old Star Schema tables
+
+DROP TABLE IF EXISTS Fact_Sales_Star;
+DROP TABLE IF EXISTS Dim_Product_Star;
+DROP TABLE IF EXISTS Dim_Customer_Star;
+DROP TABLE IF EXISTS Dim_Date_Star;
+
+
+-- Dimension: Product
+
+CREATE TABLE Dim_Product_Star (
+    Product_ID INT PRIMARY KEY,
+    Product_Name VARCHAR(50),
+    Category VARCHAR(50),
+    Brand VARCHAR(50)
+);
+
+
+-- Dimension: Customer
+
+CREATE TABLE Dim_Customer_Star (
+    Customer_ID INT PRIMARY KEY,
+    Customer_Name VARCHAR(50),
+    City VARCHAR(50)
+);
+
+
+-- Dimension: Date
+
+CREATE TABLE Dim_Date_Star (
+    Date_ID INT PRIMARY KEY,
+    Sale_Date DATE,
+    Month_Name VARCHAR(20),
+    Sale_Year INT
+);
+
+
+-- Central Fact Table
+
+CREATE TABLE Fact_Sales_Star (
+    Sale_ID INT PRIMARY KEY,
+    Product_ID INT,
+    Customer_ID INT,
+    Date_ID INT,
+    Quantity INT,
+    Sales_Amount DECIMAL(10,2),
+
+    FOREIGN KEY (Product_ID)
+    REFERENCES Dim_Product_Star(Product_ID),
+
+    FOREIGN KEY (Customer_ID)
+    REFERENCES Dim_Customer_Star(Customer_ID),
+
+    FOREIGN KEY (Date_ID)
+    REFERENCES Dim_Date_Star(Date_ID)
+);
+
+
+-- Insert dimension records
+
+INSERT INTO Dim_Product_Star VALUES
+(1, 'Mobile', 'Electronics', 'Samsung'),
+(2, 'Laptop', 'Computers', 'HP');
+
+
+INSERT INTO Dim_Customer_Star VALUES
+(101, 'Rahul', 'Pune'),
+(102, 'Priya', 'Mumbai');
+
+
+INSERT INTO Dim_Date_Star VALUES
+(1, '2026-01-10', 'January', 2026),
+(2, '2026-02-10', 'February', 2026);
+
+
+-- Insert fact records
+
+INSERT INTO Fact_Sales_Star VALUES
+(1, 1, 101, 1, 2, 30000),
+(2, 2, 102, 2, 1, 50000);
+
+
+-- Display fact table
+
+SELECT * FROM Fact_Sales_Star;
+
+
+-- Retrieve complete sales information
+
+SELECT
+    Fact_Sales_Star.Sale_ID,
+    Dim_Product_Star.Product_Name,
+    Dim_Customer_Star.Customer_Name,
+    Dim_Date_Star.Sale_Date,
+    Fact_Sales_Star.Quantity,
+    Fact_Sales_Star.Sales_Amount
+
+FROM Fact_Sales_Star
+
+JOIN Dim_Product_Star
+ON Fact_Sales_Star.Product_ID =
+   Dim_Product_Star.Product_ID
+
+JOIN Dim_Customer_Star
+ON Fact_Sales_Star.Customer_ID =
+   Dim_Customer_Star.Customer_ID
+
+JOIN Dim_Date_Star
+ON Fact_Sales_Star.Date_ID =
+   Dim_Date_Star.Date_ID;
+
+
+
+-- =====================================================
+-- Q5 (B): SNOWFLAKE SCHEMA
+-- SAME SALES DATABASE EXAMPLE
+-- =====================================================
+
+
+-- Drop old Snowflake tables in dependency order
+
+DROP TABLE IF EXISTS Fact_Sales_Snowflake;
+DROP TABLE IF EXISTS Dim_Product_Snowflake;
+DROP TABLE IF EXISTS Dim_Category;
+DROP TABLE IF EXISTS Dim_Brand;
+DROP TABLE IF EXISTS Dim_Customer_Snowflake;
+DROP TABLE IF EXISTS Dim_City;
+DROP TABLE IF EXISTS Dim_Date_Snowflake;
+
+
+-- Create sub-dimension tables first
+
+CREATE TABLE Dim_Category (
+    Category_ID INT PRIMARY KEY,
+    Category_Name VARCHAR(50)
+);
+
+
+CREATE TABLE Dim_Brand (
+    Brand_ID INT PRIMARY KEY,
+    Brand_Name VARCHAR(50)
+);
+
+
+CREATE TABLE Dim_City (
+    City_ID INT PRIMARY KEY,
+    City_Name VARCHAR(50)
+);
+
+
+-- Main dimension: Product
+
+CREATE TABLE Dim_Product_Snowflake (
+    Product_ID INT PRIMARY KEY,
+    Product_Name VARCHAR(50),
+    Category_ID INT,
+    Brand_ID INT,
+
+    FOREIGN KEY (Category_ID)
+    REFERENCES Dim_Category(Category_ID),
+
+    FOREIGN KEY (Brand_ID)
+    REFERENCES Dim_Brand(Brand_ID)
+);
+
+
+-- Main dimension: Customer
+
+CREATE TABLE Dim_Customer_Snowflake (
+    Customer_ID INT PRIMARY KEY,
+    Customer_Name VARCHAR(50),
+    City_ID INT,
+
+    FOREIGN KEY (City_ID)
+    REFERENCES Dim_City(City_ID)
+);
+
+
+-- Dimension: Date
+
+CREATE TABLE Dim_Date_Snowflake (
+    Date_ID INT PRIMARY KEY,
+    Sale_Date DATE,
+    Month_Name VARCHAR(20),
+    Sale_Year INT
+);
+
+
+-- Central Fact Table
+
+CREATE TABLE Fact_Sales_Snowflake (
+    Sale_ID INT PRIMARY KEY,
+    Product_ID INT,
+    Customer_ID INT,
+    Date_ID INT,
+    Quantity INT,
+    Sales_Amount DECIMAL(10,2),
+
+    FOREIGN KEY (Product_ID)
+    REFERENCES Dim_Product_Snowflake(Product_ID),
+
+    FOREIGN KEY (Customer_ID)
+    REFERENCES Dim_Customer_Snowflake(Customer_ID),
+
+    FOREIGN KEY (Date_ID)
+    REFERENCES Dim_Date_Snowflake(Date_ID)
+);
+
+
+-- Insert sub-dimension records first
+
+INSERT INTO Dim_Category VALUES
+(1, 'Electronics'),
+(2, 'Computers');
+
+
+INSERT INTO Dim_Brand VALUES
+(1, 'Samsung'),
+(2, 'HP');
+
+
+INSERT INTO Dim_City VALUES
+(1, 'Pune'),
+(2, 'Mumbai');
+
+
+-- Insert main dimension records
+
+INSERT INTO Dim_Product_Snowflake VALUES
+(1, 'Mobile', 1, 1),
+(2, 'Laptop', 2, 2);
+
+
+INSERT INTO Dim_Customer_Snowflake VALUES
+(101, 'Rahul', 1),
+(102, 'Priya', 2);
+
+
+INSERT INTO Dim_Date_Snowflake VALUES
+(1, '2026-01-10', 'January', 2026),
+(2, '2026-02-10', 'February', 2026);
+
+
+-- Insert fact records
+
+INSERT INTO Fact_Sales_Snowflake VALUES
+(1, 1, 101, 1, 2, 30000),
+(2, 2, 102, 2, 1, 50000);
+
+
+-- Display fact table
+
+SELECT * FROM Fact_Sales_Snowflake;
+
+
+-- Retrieve complete sales information
+
+SELECT
+    Fact_Sales_Snowflake.Sale_ID,
+    Dim_Product_Snowflake.Product_Name,
+    Dim_Category.Category_Name,
+    Dim_Brand.Brand_Name,
+    Dim_Customer_Snowflake.Customer_Name,
+    Dim_City.City_Name,
+    Dim_Date_Snowflake.Sale_Date,
+    Fact_Sales_Snowflake.Quantity,
+    Fact_Sales_Snowflake.Sales_Amount
+
+FROM Fact_Sales_Snowflake
+
+JOIN Dim_Product_Snowflake
+ON Fact_Sales_Snowflake.Product_ID =
+   Dim_Product_Snowflake.Product_ID
+
+JOIN Dim_Category
+ON Dim_Product_Snowflake.Category_ID =
+   Dim_Category.Category_ID
+
+JOIN Dim_Brand
+ON Dim_Product_Snowflake.Brand_ID =
+   Dim_Brand.Brand_ID
+
+JOIN Dim_Customer_Snowflake
+ON Fact_Sales_Snowflake.Customer_ID =
+   Dim_Customer_Snowflake.Customer_ID
+
+JOIN Dim_City
+ON Dim_Customer_Snowflake.City_ID =
+   Dim_City.City_ID
+
+JOIN Dim_Date_Snowflake
+ON Fact_Sales_Snowflake.Date_ID =
+   Dim_Date_Snowflake.Date_ID;
+
+
+
+-- =====================================================
+-- Q6: OLAP - STUDENT TABLE
+-- =====================================================
+
+
+DROP TABLE IF EXISTS STUDENT;
+
+
+-- Create STUDENT table
+
+CREATE TABLE STUDENT (
+    Roll_No INT PRIMARY KEY,
+    Student_Name VARCHAR(50),
+    Department VARCHAR(30),
+    City VARCHAR(30),
+    Marks INT
+);
+
+
+-- Insert student records
+
+INSERT INTO STUDENT VALUES
+(1, 'Rahul', 'IT', 'Pune', 85),
+(2, 'Amit', 'Computer', 'Mumbai', 75),
+(3, 'Priya', 'IT', 'Nashik', 90),
+(4, 'Sneha', 'ENTC', 'Pune', 80),
+(5, 'Rohan', 'Computer', 'Mumbai', 65),
+(6, 'Neha', 'ENTC', 'Nashik', 95);
+
+
+-- (A) Display all student records
+
+SELECT * FROM STUDENT;
+
+
+-- (B) Find maximum marks
+
+SELECT MAX(Marks) AS Maximum_Marks
+FROM STUDENT;
+
+
+-- (C) Calculate department-wise average marks
+
+SELECT
+    Department,
+    AVG(Marks) AS Average_Marks
+FROM STUDENT
+GROUP BY Department;
+
+
+-- =====================================================
+-- END OF SET 4 PRACTICAL
+-- =====================================================
