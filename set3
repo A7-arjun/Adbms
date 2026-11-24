@@ -1,0 +1,618 @@
+
+-- =====================================================
+-- ADBMS PRACTICAL EXAM - SET 3
+-- QUESTIONS: Q1, Q2, Q5 AND Q6
+-- =====================================================
+
+CREATE DATABASE IF NOT EXISTS ADBMS_Set3;
+USE ADBMS_Set3;
+
+
+-- =====================================================
+-- Q1: PRODUCT TABLE - RANGE PARTITIONING BY PRICE
+-- =====================================================
+
+DROP TABLE IF EXISTS PRODUCT;
+
+CREATE TABLE PRODUCT (
+    Product_ID INT,
+    Product_Name VARCHAR(50),
+    Category VARCHAR(30),
+    Price INT,
+
+    -- Partition column must be part of primary key
+    PRIMARY KEY (Product_ID, Price)
+)
+
+PARTITION BY RANGE (Price) (
+
+    PARTITION p_low VALUES LESS THAN (10000),
+
+    PARTITION p_medium VALUES LESS THAN (50000),
+
+    PARTITION p_high VALUES LESS THAN (100001)
+);
+
+
+-- Insert product records
+
+INSERT INTO PRODUCT VALUES
+(1, 'Mouse', 'Accessories', 500),
+(2, 'Keyboard', 'Accessories', 1500),
+(3, 'Monitor', 'Electronics', 12000),
+(4, 'Printer', 'Electronics', 18000),
+(5, 'Laptop', 'Computers', 65000),
+(6, 'Gaming Laptop', 'Computers', 90000);
+
+
+-- Display all products
+
+SELECT * FROM PRODUCT;
+
+
+-- Display records from each partition
+
+SELECT * FROM PRODUCT PARTITION (p_low);
+
+SELECT * FROM PRODUCT PARTITION (p_medium);
+
+SELECT * FROM PRODUCT PARTITION (p_high);
+
+
+-- Update product price
+
+UPDATE PRODUCT
+SET Price = 55000
+WHERE Product_ID = 3 AND Price = 12000;
+
+
+-- Delete a product
+
+DELETE FROM PRODUCT
+WHERE Product_ID = 2 AND Price = 1500;
+
+
+-- Display final records
+
+SELECT * FROM PRODUCT;
+
+
+-- Display partition information
+
+SELECT PARTITION_NAME, TABLE_ROWS
+FROM INFORMATION_SCHEMA.PARTITIONS
+WHERE TABLE_SCHEMA = 'ADBMS_Set3'
+AND TABLE_NAME = 'PRODUCT';
+
+
+
+-- =====================================================
+-- Q2: DISTRIBUTED TRANSACTION
+-- ONLINE SHOPPING
+-- =====================================================
+
+DROP TABLE IF EXISTS Orders;
+DROP TABLE IF EXISTS Products_Stock;
+
+
+-- Create product stock table
+
+CREATE TABLE Products_Stock (
+    Product_ID INT PRIMARY KEY,
+    Product_Name VARCHAR(50),
+    Stock INT,
+    Price DECIMAL(10,2)
+);
+
+
+-- Create orders table
+
+CREATE TABLE Orders (
+    Order_ID INT PRIMARY KEY,
+    Customer_Name VARCHAR(50),
+    Product_ID INT,
+    Quantity INT,
+    Total_Amount DECIMAL(10,2),
+
+    FOREIGN KEY (Product_ID)
+    REFERENCES Products_Stock(Product_ID)
+);
+
+
+-- Insert product stock
+
+INSERT INTO Products_Stock VALUES
+(101, 'Mobile', 10, 15000),
+(102, 'Laptop', 5, 50000);
+
+
+-- Display available stock
+
+SELECT * FROM Products_Stock;
+
+
+-- Start transaction for online purchase
+
+START TRANSACTION;
+
+
+-- Reduce stock by one
+
+UPDATE Products_Stock
+SET Stock = Stock - 1
+WHERE Product_ID = 101
+AND Stock > 0;
+
+
+-- Insert customer order
+
+INSERT INTO Orders VALUES
+(1, 'Rahul', 101, 1, 15000);
+
+
+-- Commit transaction
+
+COMMIT;
+
+
+-- Display updated stock and order
+
+SELECT * FROM Products_Stock;
+
+SELECT * FROM Orders;
+
+
+-- Demonstrate ROLLBACK
+
+START TRANSACTION;
+
+
+-- Temporarily reduce stock
+
+UPDATE Products_Stock
+SET Stock = Stock - 1
+WHERE Product_ID = 102;
+
+
+-- Temporarily insert an order
+
+INSERT INTO Orders VALUES
+(2, 'Amit', 102, 1, 50000);
+
+
+-- Cancel the transaction
+
+ROLLBACK;
+
+
+-- Verify that the changes were cancelled
+
+SELECT * FROM Products_Stock;
+
+SELECT * FROM Orders;
+
+
+
+-- =====================================================
+-- Q5 (A): STAR SCHEMA
+-- ONLINE SHOPPING DATABASE
+-- =====================================================
+
+
+-- Drop old Star Schema tables
+
+DROP TABLE IF EXISTS Fact_Sales_Star;
+DROP TABLE IF EXISTS Dim_Product_Star;
+DROP TABLE IF EXISTS Dim_Customer_Star;
+DROP TABLE IF EXISTS Dim_Date_Star;
+
+
+-- Dimension: Product
+
+CREATE TABLE Dim_Product_Star (
+    Product_ID INT PRIMARY KEY,
+    Product_Name VARCHAR(50),
+    Category VARCHAR(50),
+    Brand VARCHAR(50)
+);
+
+
+-- Dimension: Customer
+
+CREATE TABLE Dim_Customer_Star (
+    Customer_ID INT PRIMARY KEY,
+    Customer_Name VARCHAR(50),
+    City VARCHAR(50)
+);
+
+
+-- Dimension: Date
+
+CREATE TABLE Dim_Date_Star (
+    Date_ID INT PRIMARY KEY,
+    Sale_Date DATE,
+    Month_Name VARCHAR(20),
+    Sale_Year INT
+);
+
+
+-- Central Fact Table
+
+CREATE TABLE Fact_Sales_Star (
+    Sale_ID INT PRIMARY KEY,
+    Product_ID INT,
+    Customer_ID INT,
+    Date_ID INT,
+    Quantity INT,
+    Sales_Amount DECIMAL(10,2),
+
+    FOREIGN KEY (Product_ID)
+    REFERENCES Dim_Product_Star(Product_ID),
+
+    FOREIGN KEY (Customer_ID)
+    REFERENCES Dim_Customer_Star(Customer_ID),
+
+    FOREIGN KEY (Date_ID)
+    REFERENCES Dim_Date_Star(Date_ID)
+);
+
+
+-- Insert dimension records
+
+INSERT INTO Dim_Product_Star VALUES
+(1, 'Mobile', 'Electronics', 'Samsung'),
+(2, 'Laptop', 'Computers', 'HP');
+
+
+INSERT INTO Dim_Customer_Star VALUES
+(101, 'Rahul', 'Pune'),
+(102, 'Priya', 'Mumbai');
+
+
+INSERT INTO Dim_Date_Star VALUES
+(1, '2026-01-10', 'January', 2026),
+(2, '2026-02-10', 'February', 2026);
+
+
+-- Insert fact records
+
+INSERT INTO Fact_Sales_Star VALUES
+(1, 1, 101, 1, 2, 30000),
+(2, 2, 102, 2, 1, 50000);
+
+
+-- Display fact table
+
+SELECT * FROM Fact_Sales_Star;
+
+
+-- Retrieve complete sales information
+
+SELECT
+    Fact_Sales_Star.Sale_ID,
+    Dim_Product_Star.Product_Name,
+    Dim_Customer_Star.Customer_Name,
+    Dim_Date_Star.Sale_Date,
+    Fact_Sales_Star.Quantity,
+    Fact_Sales_Star.Sales_Amount
+
+FROM Fact_Sales_Star
+
+JOIN Dim_Product_Star
+ON Fact_Sales_Star.Product_ID =
+   Dim_Product_Star.Product_ID
+
+JOIN Dim_Customer_Star
+ON Fact_Sales_Star.Customer_ID =
+   Dim_Customer_Star.Customer_ID
+
+JOIN Dim_Date_Star
+ON Fact_Sales_Star.Date_ID =
+   Dim_Date_Star.Date_ID;
+
+
+
+-- =====================================================
+-- Q5 (B): SNOWFLAKE SCHEMA
+-- SAME ONLINE SHOPPING EXAMPLE
+-- =====================================================
+
+
+-- Drop old Snowflake tables in dependency order
+
+DROP TABLE IF EXISTS Fact_Sales_Snowflake;
+DROP TABLE IF EXISTS Dim_Product_Snowflake;
+DROP TABLE IF EXISTS Dim_Category;
+DROP TABLE IF EXISTS Dim_Brand;
+DROP TABLE IF EXISTS Dim_Customer_Snowflake;
+DROP TABLE IF EXISTS Dim_City;
+DROP TABLE IF EXISTS Dim_Date_Snowflake;
+
+
+-- Create sub-dimension tables first
+
+CREATE TABLE Dim_Category (
+    Category_ID INT PRIMARY KEY,
+    Category_Name VARCHAR(50)
+);
+
+
+CREATE TABLE Dim_Brand (
+    Brand_ID INT PRIMARY KEY,
+    Brand_Name VARCHAR(50)
+);
+
+
+CREATE TABLE Dim_City (
+    City_ID INT PRIMARY KEY,
+    City_Name VARCHAR(50)
+);
+
+
+-- Main dimension: Product
+
+CREATE TABLE Dim_Product_Snowflake (
+    Product_ID INT PRIMARY KEY,
+    Product_Name VARCHAR(50),
+    Category_ID INT,
+    Brand_ID INT,
+
+    FOREIGN KEY (Category_ID)
+    REFERENCES Dim_Category(Category_ID),
+
+    FOREIGN KEY (Brand_ID)
+    REFERENCES Dim_Brand(Brand_ID)
+);
+
+
+-- Main dimension: Customer
+
+CREATE TABLE Dim_Customer_Snowflake (
+    Customer_ID INT PRIMARY KEY,
+    Customer_Name VARCHAR(50),
+    City_ID INT,
+
+    FOREIGN KEY (City_ID)
+    REFERENCES Dim_City(City_ID)
+);
+
+
+-- Dimension: Date
+
+CREATE TABLE Dim_Date_Snowflake (
+    Date_ID INT PRIMARY KEY,
+    Sale_Date DATE,
+    Month_Name VARCHAR(20),
+    Sale_Year INT
+);
+
+
+-- Central Fact Table
+
+CREATE TABLE Fact_Sales_Snowflake (
+    Sale_ID INT PRIMARY KEY,
+    Product_ID INT,
+    Customer_ID INT,
+    Date_ID INT,
+    Quantity INT,
+    Sales_Amount DECIMAL(10,2),
+
+    FOREIGN KEY (Product_ID)
+    REFERENCES Dim_Product_Snowflake(Product_ID),
+
+    FOREIGN KEY (Customer_ID)
+    REFERENCES Dim_Customer_Snowflake(Customer_ID),
+
+    FOREIGN KEY (Date_ID)
+    REFERENCES Dim_Date_Snowflake(Date_ID)
+);
+
+
+-- Insert sub-dimension records first
+
+INSERT INTO Dim_Category VALUES
+(1, 'Electronics'),
+(2, 'Computers');
+
+
+INSERT INTO Dim_Brand VALUES
+(1, 'Samsung'),
+(2, 'HP');
+
+
+INSERT INTO Dim_City VALUES
+(1, 'Pune'),
+(2, 'Mumbai');
+
+
+-- Insert main dimension records
+
+INSERT INTO Dim_Product_Snowflake VALUES
+(1, 'Mobile', 1, 1),
+(2, 'Laptop', 2, 2);
+
+
+INSERT INTO Dim_Customer_Snowflake VALUES
+(101, 'Rahul', 1),
+(102, 'Priya', 2);
+
+
+INSERT INTO Dim_Date_Snowflake VALUES
+(1, '2026-01-10', 'January', 2026),
+(2, '2026-02-10', 'February', 2026);
+
+
+-- Insert fact records
+
+INSERT INTO Fact_Sales_Snowflake VALUES
+(1, 1, 101, 1, 2, 30000),
+(2, 2, 102, 2, 1, 50000);
+
+
+-- Display fact table
+
+SELECT * FROM Fact_Sales_Snowflake;
+
+
+-- Retrieve complete sales information
+
+SELECT
+    Fact_Sales_Snowflake.Sale_ID,
+    Dim_Product_Snowflake.Product_Name,
+    Dim_Category.Category_Name,
+    Dim_Brand.Brand_Name,
+    Dim_Customer_Snowflake.Customer_Name,
+    Dim_City.City_Name,
+    Dim_Date_Snowflake.Sale_Date,
+    Fact_Sales_Snowflake.Quantity,
+    Fact_Sales_Snowflake.Sales_Amount
+
+FROM Fact_Sales_Snowflake
+
+JOIN Dim_Product_Snowflake
+ON Fact_Sales_Snowflake.Product_ID =
+   Dim_Product_Snowflake.Product_ID
+
+JOIN Dim_Category
+ON Dim_Product_Snowflake.Category_ID =
+   Dim_Category.Category_ID
+
+JOIN Dim_Brand
+ON Dim_Product_Snowflake.Brand_ID =
+   Dim_Brand.Brand_ID
+
+JOIN Dim_Customer_Snowflake
+ON Fact_Sales_Snowflake.Customer_ID =
+   Dim_Customer_Snowflake.Customer_ID
+
+JOIN Dim_City
+ON Dim_Customer_Snowflake.City_ID =
+   Dim_City.City_ID
+
+JOIN Dim_Date_Snowflake
+ON Fact_Sales_Snowflake.Date_ID =
+   Dim_Date_Snowflake.Date_ID;
+
+
+
+-- =====================================================
+-- Q6: OLAP - STUDENT_RESULT TABLE
+-- =====================================================
+
+
+DROP TABLE IF EXISTS STUDENT_RESULT;
+
+
+-- Required question columns
+-- Exam_Year is an additional column for OLAP practice
+
+CREATE TABLE STUDENT_RESULT (
+    Student_ID INT,
+    Student_Name VARCHAR(50),
+    Subject VARCHAR(50),
+    Marks INT,
+    Semester INT,
+    Exam_Year INT
+);
+
+
+-- Insert sample records
+
+INSERT INTO STUDENT_RESULT VALUES
+(1, 'Rahul', 'DBMS', 85, 3, 2026),
+(2, 'Amit', 'DBMS', 75, 3, 2026),
+(3, 'Priya', 'Python', 90, 3, 2026),
+(4, 'Sneha', 'Python', 80, 4, 2026),
+(5, 'Rohan', 'DBMS', 65, 4, 2025),
+(6, 'Neha', 'Python', 95, 4, 2025);
+
+
+-- (A) Display all student result records
+
+SELECT * FROM STUDENT_RESULT;
+
+
+-- (B) Calculate average marks
+
+SELECT AVG(Marks) AS Average_Marks
+FROM STUDENT_RESULT;
+
+
+-- (C) Calculate subject-wise average marks
+
+SELECT
+    Subject,
+    AVG(Marks) AS Average_Marks
+FROM STUDENT_RESULT
+GROUP BY Subject;
+
+
+-- =====================================================
+-- ADDITIONAL OLAP PRACTICE QUERIES
+-- =====================================================
+
+
+-- 1. ROLL-UP
+-- Calculate average marks semester-wise
+
+SELECT
+    Semester,
+    AVG(Marks) AS Average_Marks
+FROM STUDENT_RESULT
+GROUP BY Semester;
+
+
+-- 2. SLICE
+-- Display records for semester 3 only
+
+SELECT *
+FROM STUDENT_RESULT
+WHERE Semester = 3;
+
+
+-- 3. DICE
+-- Display DBMS marks for semester 3
+-- where marks are greater than 80
+
+SELECT *
+FROM STUDENT_RESULT
+WHERE Subject = 'DBMS'
+AND Semester = 3
+AND Marks > 80;
+
+
+-- 4. DRILL-DOWN
+-- Show average marks by year, semester and subject
+
+SELECT
+    Exam_Year,
+    Semester,
+    Subject,
+    AVG(Marks) AS Average_Marks
+FROM STUDENT_RESULT
+GROUP BY Exam_Year, Semester, Subject
+ORDER BY Exam_Year, Semester, Subject;
+
+
+-- 5. PIVOT
+-- Show subject-wise marks averages
+-- in separate semester columns
+
+SELECT
+    Subject,
+
+    AVG(CASE
+        WHEN Semester = 3 THEN Marks
+    END) AS Semester_3,
+
+    AVG(CASE
+        WHEN Semester = 4 THEN Marks
+    END) AS Semester_4
+
+FROM STUDENT_RESULT
+GROUP BY Subject;
+
+
+-- =====================================================
+-- END OF SET 3 PRACTICAL
+-- =====================================================
